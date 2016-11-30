@@ -19,6 +19,8 @@
 // For compilers that support precompilation, includes "wx/wx.h".
 #include "wx/wxprec.h"
 #include <wx/dir.h>
+#include <wx/filename.h>
+#include <wx/stdpaths.h>
 
 #ifdef __BORLANDC__
     #pragma hdrstop
@@ -45,8 +47,10 @@
 	#include "client/windows/crash_generation/crash_generation_server.h"
 	#include "client/windows/handler/exception_handler.h"
 	#include "client/windows/common/ipc_protocol.h"
-	#include "client/windows/tests/crash_generation_app/abstract_class.h"
 #endif // _WIN32
+
+
+#include "abstract_class.h"
 
 // ----------------------------------------------------------------------------
 // private classes
@@ -63,6 +67,7 @@ public:
     // initialization (doing it here and not in the ctor allows to have an error
     // return: if OnInit() returns false, the application terminates)
     virtual bool OnInit() wxOVERRIDE;
+	virtual int OnExit() wxOVERRIDE;
 };
 
 // Define a new frame type: this is going to be our main frame
@@ -99,140 +104,16 @@ enum
     Minimal_About = wxID_ABOUT
 };
 
-// ----------------------------------------------------------------------------
-// event tables and other macros for wxWidgets
-// ----------------------------------------------------------------------------
-
-// the event tables connect the wxWidgets events with the functions (event
-// handlers) which process them. It can be also done at run-time, but for the
-// simple menu events like this the static method is much simpler.
-wxBEGIN_EVENT_TABLE(MyFrame, wxFrame)
-    EVT_MENU(Minimal_Quit,  MyFrame::OnQuit)
-    EVT_MENU(Minimal_About, MyFrame::OnAbout)
-wxEND_EVENT_TABLE()
-
-// Create a new application object: this macro will allow wxWidgets to create
-// the application object during program execution (it's better than using a
-// static object for many reasons) and also implements the accessor function
-// wxGetApp() which will return the reference of the right type (i.e. MyApp and
-// not wxApp)
-wxIMPLEMENT_APP(MyApp);
-
-// ============================================================================
-// implementation
-// ============================================================================
-
-// ----------------------------------------------------------------------------
-// the application class
-// ----------------------------------------------------------------------------
-
-// 'Main program' equivalent: the program execution "starts" here
-bool MyApp::OnInit()
-{
-	using namespace google_breakpad;
-
-	CustomClientInfo custom_info = { kCustomInfoEntries, kCustomInfoCount };
-
-    CrashServerStart();
-	// This is needed for CRT to not show dialog for invalid param
-	// failures and instead let the code handle it.
-	#ifdef _WIN32
-		_CrtSetReportMode(_CRT_ASSERT, 0);
-	#endif
-	handler = new ExceptionHandler(L"C:\\dumps\\",
-		NULL,
-		google_breakpad::ShowDumpResults,
-		NULL,
-		ExceptionHandler::HANDLER_ALL,
-		MiniDumpNormal,
-		kPipeName,
-		&custom_info);
-
-    // call the base class initialization method, currently it only parses a
-    // few common command-line options but it could be do more in the future
-    if ( !wxApp::OnInit() )
-        return false;
-
-    // create the main application window
-    MyFrame *frame = new MyFrame("Minimal wxWidgets App");
-
-    // and show it (the frames, unlike simple controls, are not shown when
-    // created initially)
-    frame->Show(true);
-
-    // success: wxApp::OnRun() will be called which will enter the main message
-    // loop and the application will run. If we returned false here, the
-    // application would exit immediately.
-    return true;
-}
-
-// ----------------------------------------------------------------------------
-// main frame
-// ----------------------------------------------------------------------------
-
-// frame constructor
-MyFrame::MyFrame(const wxString& title)
-       : wxFrame(NULL, wxID_ANY, title)
-{
-    // set the frame icon
-    SetIcon(wxICON(sample));
-
-	// Initialize our text box with an id of TEXT_Main, and the label "hi"
-	MainEditBox = new wxTextCtrl(this, wxID_ANY, "", wxDefaultPosition, wxDefaultSize,
-		wxTE_MULTILINE | wxTE_RICH, wxDefaultValidator, wxTextCtrlNameStr);
-
-    // create a menu bar
-    wxMenu *fileMenu = new wxMenu;
-
-    // the "About" item should be in the help menu
-    wxMenu *helpMenu = new wxMenu;
-    helpMenu->Append(Minimal_About, wxT("&About\tF1"), wxT("Show about dialog"));
-
-    fileMenu->Append(Minimal_Quit, wxT("E&xit\tAlt-X"), wxT("Quit this program"));
-
-    // now append the freshly created menu to the menu bar...
-    wxMenuBar *menuBar = new wxMenuBar();
-    menuBar->Append(fileMenu, wxT("&File"));
-    menuBar->Append(helpMenu, wxT("&Help"));
-
-    // ... and attach this menu bar to the frame
-    SetMenuBar(menuBar);
-}
-
-
-// event handlers
-
-void MyFrame::OnQuit(wxCommandEvent& WXUNUSED(event))
-{
-    // true is to force the frame to close
-    Close(true);
-}
-
-void MyFrame::OnAbout(wxCommandEvent& WXUNUSED(event))
-{
-    wxMessageBox(wxString::Format
-                 (
-                    "Welcome to %s!\n"
-                    "\n"
-                    "This is the minimal wxWidgets sample\n"
-                    "running under %s.",
-                    wxVERSION_STRING,
-                    wxGetOsDescription()
-                 ),
-                 "About wxWidgets minimal sample",
-                 wxOK | wxICON_INFORMATION,
-                 this);
-}
 
 
 namespace google_breakpad {
 
 	const int kMaxLoadString = 100;
 	const wchar_t kPipeName[] = L"\\\\.\\pipe\\BreakpadCrashServices\\TestServer";
-	
+
 	// Maximum length of a line in the edit box.
 	const size_t kMaximumLineLength = 256;
-	
+
 	static size_t kCustomInfoCount = 2;
 	static CustomInfoEntry kCustomInfoEntries[] = {
 		CustomInfoEntry(L"prod", L"CrashTestApp"),
@@ -365,15 +246,14 @@ namespace google_breakpad {
 		//TODO AppendTextToEditBox line
 	}
 
-	void CrashServerStart() {
+	void CrashServerStart(std::wstring dump_path) {
 		// Do not create another instance of the server.
 		if (crash_server) {
 			return;
 		}
 
-		std::wstring dump_path = L"Dumps\\";
 
-		if (!wxDir::Make(dump_path)) {
+		if (!wxDir::Exists(dump_path) && !wxDir::Make(dump_path)) {
 			wxMessageBox(wxT("Unable to create dump directory"), wxT("Dumper"), wxICON_ERROR);
 			return;
 		}
@@ -392,7 +272,7 @@ namespace google_breakpad {
 			&dump_path);
 
 		if (!crash_server->Start()) {
-			wxMessageBox(wxT("Unable to start server"), wxT("Dumper"), wxICON_ERROR);
+			//wxMessageBox(wxT("Unable to start server"), wxT("Dumper"), wxICON_ERROR);
 			delete crash_server;
 			crash_server = NULL;
 		}
@@ -434,26 +314,162 @@ namespace google_breakpad {
 		}
 	}
 	/*
-	
-			case ID_SERVER_START:
-				CrashServerStart();
-				break;
-			case ID_SERVER_STOP:
-				CrashServerStop();
-				break;
-			case ID_CLIENT_DEREFZERO:
-				DerefZeroCrash();
-				break;
-			case ID_CLIENT_INVALIDPARAM:
-				InvalidParamCrash();
-				break;
-			case ID_CLIENT_PURECALL:
-				PureCallCrash();
-				break;
-			case ID_CLIENT_REQUESTEXPLICITDUMP:
-				RequestDump();
-				break;
-	
+
+	case ID_SERVER_START:
+	CrashServerStart();
+	break;
+	case ID_SERVER_STOP:
+	CrashServerStop();
+	break;
+	case ID_CLIENT_DEREFZERO:
+	DerefZeroCrash();
+	break;
+	case ID_CLIENT_INVALIDPARAM:
+	InvalidParamCrash();
+	break;
+	case ID_CLIENT_PURECALL:
+	PureCallCrash();
+	break;
+	case ID_CLIENT_REQUESTEXPLICITDUMP:
+	RequestDump();
+	break;
+
 	*/
 
 }  // namespace google_breakpad
+
+
+
+// ----------------------------------------------------------------------------
+// event tables and other macros for wxWidgets
+// ----------------------------------------------------------------------------
+// the event tables connect the wxWidgets events with the functions (event
+// handlers) which process them. It can be also done at run-time, but for the
+// simple menu events like this the static method is much simpler.
+wxBEGIN_EVENT_TABLE(MyFrame, wxFrame)
+    EVT_MENU(Minimal_Quit,  MyFrame::OnQuit)
+    EVT_MENU(Minimal_About, MyFrame::OnAbout)
+wxEND_EVENT_TABLE()
+
+// Create a new application object: this macro will allow wxWidgets to create
+// the application object during program execution (it's better than using a
+// static object for many reasons) and also implements the accessor function
+// wxGetApp() which will return the reference of the right type (i.e. MyApp and
+// not wxApp)
+wxIMPLEMENT_APP(MyApp);
+
+// ============================================================================
+// implementation
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// the application class
+// ----------------------------------------------------------------------------
+
+// 'Main program' equivalent: the program execution "starts" here
+bool MyApp::OnInit()
+{
+	using namespace google_breakpad;
+
+	CustomClientInfo custom_info = { kCustomInfoEntries, kCustomInfoCount };
+
+	wxFileName dumpFolder = wxFileName(wxStandardPaths::Get().GetUserDataDir(), "dumps");
+	dumpFolder.Mkdir();
+	std::wstring dump_path = dumpFolder.GetFullPath();
+
+    CrashServerStart(dump_path);
+	// This is needed for CRT to not show dialog for invalid param
+	// failures and instead let the code handle it.
+	#ifdef _WIN32
+		_CrtSetReportMode(_CRT_ASSERT, 0);
+	#endif
+	handler = new ExceptionHandler(dump_path,
+		NULL,
+		google_breakpad::ShowDumpResults,
+		NULL,
+		ExceptionHandler::HANDLER_ALL,
+		MiniDumpNormal,
+		kPipeName,
+		&custom_info);
+
+    // call the base class initialization method, currently it only parses a
+    // few common command-line options but it could be do more in the future
+    if ( !wxApp::OnInit() )
+        return false;
+
+    // create the main application window
+    MyFrame *frame = new MyFrame("Minimal wxWidgets App");
+
+    // and show it (the frames, unlike simple controls, are not shown when
+    // created initially)
+    frame->Show(true);
+
+    // success: wxApp::OnRun() will be called which will enter the main message
+    // loop and the application will run. If we returned false here, the
+    // application would exit immediately.
+    return true;
+}
+
+int MyApp::OnExit() {
+	CleanUp();
+	return 0;
+}
+
+// ----------------------------------------------------------------------------
+// main frame
+// ----------------------------------------------------------------------------
+
+// frame constructor
+MyFrame::MyFrame(const wxString& title)
+       : wxFrame(NULL, wxID_ANY, title)
+{
+    // set the frame icon
+    SetIcon(wxICON(sample));
+
+	// Initialize our text box with an id of TEXT_Main, and the label "hi"
+	MainEditBox = new wxTextCtrl(this, wxID_ANY, "", wxDefaultPosition, wxDefaultSize,
+		wxTE_MULTILINE | wxTE_RICH, wxDefaultValidator, wxTextCtrlNameStr);
+
+    // create a menu bar
+    wxMenu *fileMenu = new wxMenu;
+
+    // the "About" item should be in the help menu
+    wxMenu *helpMenu = new wxMenu;
+    helpMenu->Append(Minimal_About, wxT("&About\tF1"), wxT("Show about dialog"));
+
+    fileMenu->Append(Minimal_Quit, wxT("E&xit\tAlt-X"), wxT("Quit this program"));
+
+    // now append the freshly created menu to the menu bar...
+    wxMenuBar *menuBar = new wxMenuBar();
+    menuBar->Append(fileMenu, wxT("&File"));
+    menuBar->Append(helpMenu, wxT("&Help"));
+
+    // ... and attach this menu bar to the frame
+    SetMenuBar(menuBar);
+}
+
+
+// event handlers
+
+void MyFrame::OnQuit(wxCommandEvent& WXUNUSED(event))
+{
+    // true is to force the frame to close
+    Close(true);
+}
+
+void MyFrame::OnAbout(wxCommandEvent& WXUNUSED(event))
+{
+    wxMessageBox(wxString::Format
+                 (
+                    "Welcome to %s!\n"
+                    "\n"
+                    "This is the minimal wxWidgets sample\n"
+                    "running under %s.",
+                    wxVERSION_STRING,
+                    wxGetOsDescription()
+                 ),
+                 "About wxWidgets minimal sample",
+                 wxOK | wxICON_INFORMATION,
+                 this);
+}
+

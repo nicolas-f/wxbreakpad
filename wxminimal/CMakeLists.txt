@@ -6,7 +6,8 @@ include_directories (./ ${PROJECT_SOURCE_DIR}/../breakpad/src/)
 #--------------#
 
 set(WX_SOURCES
-    minimal.cpp)
+    minimal.cpp
+	abstract_class.cc)
 
 source_group( "wxsources" FILES ${WX_SOURCES} )
 
