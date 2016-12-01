@@ -48,7 +48,12 @@
 	#include "client/windows/handler/exception_handler.h"
 	#include "client/windows/common/ipc_protocol.h"
 #endif // _WIN32
-
+#ifdef  __UNIX__
+#include "client/linux/crash_generation/client_info.h"
+#include "client/linux/crash_generation/crash_generation_server.h"
+#include "client/linux/handler/exception_handler.h"
+#include "client/linux/common/ipc_protocol.h"
+#endif //__UNIX__
 
 #include "abstract_class.h"
 
@@ -59,6 +64,8 @@
 // Define a new application type, each program should derive a class from wxApp
 class MyApp : public wxApp
 {
+private:
+	std::wstring dump_path;
 public:
     // override base class virtuals
     // ----------------------------
@@ -109,7 +116,7 @@ enum
 namespace google_breakpad {
 
 	const int kMaxLoadString = 100;
-	const wchar_t kPipeName[] = L"\\\\.\\pipe\\BreakpadCrashServices\\TestServer";
+	const wchar_t kPipeName[] = L"\\\\.\\pipe\\BreakpadCrashServices";
 
 	// Maximum length of a line in the edit box.
 	const size_t kMaximumLineLength = 256;
@@ -246,7 +253,7 @@ namespace google_breakpad {
 		//TODO AppendTextToEditBox line
 	}
 
-	void CrashServerStart(std::wstring dump_path) {
+	void CrashServerStart(const std::wstring& dump_path) {
 		// Do not create another instance of the server.
 		if (crash_server) {
 			return;
@@ -272,7 +279,7 @@ namespace google_breakpad {
 			&dump_path);
 
 		if (!crash_server->Start()) {
-			//wxMessageBox(wxT("Unable to start server"), wxT("Dumper"), wxICON_ERROR);
+			wxMessageBox(wxT("Unable to start server"), wxT("Dumper"), wxICON_ERROR);
 			delete crash_server;
 			crash_server = NULL;
 		}
@@ -374,8 +381,7 @@ bool MyApp::OnInit()
 	CustomClientInfo custom_info = { kCustomInfoEntries, kCustomInfoCount };
 
 	wxFileName dumpFolder = wxFileName(wxStandardPaths::Get().GetUserDataDir(), "dumps");
-	dumpFolder.Mkdir();
-	std::wstring dump_path = dumpFolder.GetFullPath();
+	dump_path = dumpFolder.GetFullPath();
 
     CrashServerStart(dump_path);
 	// This is needed for CRT to not show dialog for invalid param
@@ -383,14 +389,14 @@ bool MyApp::OnInit()
 	#ifdef _WIN32
 		_CrtSetReportMode(_CRT_ASSERT, 0);
 	#endif
-	handler = new ExceptionHandler(dump_path,
+	/*handler = new ExceptionHandler(dump_path,
 		NULL,
 		google_breakpad::ShowDumpResults,
 		NULL,
 		ExceptionHandler::HANDLER_ALL,
 		MiniDumpNormal,
 		kPipeName,
-		&custom_info);
+		&custom_info);*/
 
     // call the base class initialization method, currently it only parses a
     // few common command-line options but it could be do more in the future
